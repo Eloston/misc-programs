@@ -132,13 +132,13 @@ def _parse_songlist(raw_data):
     ))
     return songs
 
-def _split_file(compilation_path, compilation_title, compilation_author, songs):
+def _split_file(compilation_path, compilation_title, compilation_author, compilation_url, songs):
     '''Split a song compilation file by the processed songs list'''
     for start_time, end_time, raw_name in songs:
         output_path = _get_output_path(raw_name)
         if not _is_name_existing(raw_name):
             output_args = [
-                '-metadata:s:a', 'comment=From the compilation "{}"'.format(compilation_title),
+                '-metadata:s:a', 'comment=From the compilation "{}". {}'.format(compilation_title, compilation_url),
                 '-metadata:s:a', 'album={}'.format(compilation_author),
                 '-metadata:s:a', 'album_artist={}'.format(compilation_author),
                 '-metadata:s:a', 'artist={}'.format(compilation_author),
@@ -186,14 +186,13 @@ def _process_file(action, compilation_title, compilation_author, compilation_pat
         probe_stdout, probe_stderr = ffprobe.run(stderr=subprocess.DEVNULL, stdout=subprocess.PIPE)
         compilation_title = probe_stdout.decode('UTF-8').rstrip()
         '''
-        _split_file(compilation_path, compilation_title, compilation_author, songs)
+        _split_file(compilation_path, compilation_title, compilation_author, '(from filesystem)', songs)
     else:
         logging.critical('Invalid action "{}"'.format(action))
         exit(1)
 
 def _youtubedl_hook(data):
     '''youtube-dl download hook'''
-    # TODO: Parse description for artist names and add to song names
     status = data['status']
     if status == 'downloading':
         downloaded_bytes = data.get('downloaded_bytes', 0)
@@ -287,29 +286,29 @@ def _process_youtube(action, proxy, compilation_urls):
                 exit(1)
             url_to_metadata[url] = (info['id'], title, info['uploader'])
             chapters = info['chapters']
-            if not chapters:
+            if chapters:
+                songs = _get_songs_from_chapters(chapters)
+                for song in songs:
+                    start_time, end_time, raw_name = song
+                    formatted_name = _format_name(raw_name)
+                    if '_' not in formatted_name:
+                        # Hack to detect songs with one word in them. These songs from this video will need to be qualified with an artist name later on
+                        logging.warning('Songs need qualification')
+                        needs_qualification.add(url)
+                        del url_to_metadata[url]
+                        if url in url_to_new_songs:
+                            del url_to_new_songs[url]
+                        break
+                    if not _is_name_existing(raw_name, name_collection=known_song_names) and not _is_name_existing(raw_name):
+                        if url not in url_to_new_songs:
+                            url_to_new_songs[url] = list()
+                        url_to_new_songs[url].append(song)
+                        known_song_names.add(formatted_name)
+                        logging.info('Found new song: {}'.format(raw_name))
+            else:
                 # TODO: If no chapters but song is short enough (<20 min?), then assume it is a single song and use video title as song name
                 no_chapters.add(url)
                 logging.warning('Compilation has no chapters')
-                continue
-            songs = _get_songs_from_chapters(chapters)
-            for song in songs:
-                start_time, end_time, raw_name = song
-                formatted_name = _format_name(raw_name)
-                if '_' not in formatted_name:
-                    # Hack to detect songs with one word in them. These songs from this video will need to be qualified with an artist name later on
-                    logging.warning('Songs need qualification')
-                    needs_qualification.add(url)
-                    del url_to_metadata[url]
-                    if url in url_to_new_songs:
-                        del url_to_new_songs[url]
-                    break
-                if not _is_name_existing(raw_name, name_collection=known_song_names) and not _is_name_existing(raw_name):
-                    if url not in url_to_new_songs:
-                        url_to_new_songs[url] = list()
-                    url_to_new_songs[url].append(song)
-                    known_song_names.add(formatted_name)
-                    logging.info('Found new song: {}'.format(raw_name))
         if action == Action.CHECK_NEW:
             if len(known_song_names) > initial_known_song_names_size:
                 logging.info("Found new songs!")
@@ -322,7 +321,7 @@ def _process_youtube(action, proxy, compilation_urls):
             for url in url_to_new_songs:
                 compilation_id, compilation_title, compilation_author = url_to_metadata[url]
                 compilation_path = os.path.join(YOUTUBE_DL_DOWNLOADS, compilation_id + '.webm')
-                _split_file(compilation_path, compilation_title, compilation_author, url_to_new_songs[url])
+                _split_file(compilation_path, compilation_title, compilation_author, url, url_to_new_songs[url])
             logging.info('Done processing songs')
         if needs_qualification:
             logging.info('Skipped URLs that need artist(s) names: {}'.format(str(needs_qualification)))
@@ -346,7 +345,6 @@ def _main(action_type, action, *args):
             raise Exception('compilation_path must be a file')
         _process_file(action, compilation_title, compilation_author, compilation_path)
     elif action_type == 'youtube':
-        # TODO: Fix hardcoded proxy
         _process_youtube(action, PROXY, args)
     else:
         logging.critical('Invalid action type "{}"'.format(action))
