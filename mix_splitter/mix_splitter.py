@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Splitter for YouTube song mixes via timestamps in the description
-# Currently tested exclusively on The Soul of Wind YouTube channel
-# Requires youtube-dl
-# Requires SONG_OUTPUT environment variable to be set to the output directory for songs
-# Optional variables: ALL_PROXY, YOUTUBE_DL_CACHE, YOUTUBE_DL_DOWNLOADS
+'''
+Splitter for YouTube song mixes via timestamps in the description
+Currently tested exclusively on The Soul of Wind YouTube channel
+Requires youtube-dl
+Requires SONG_OUTPUT environment variable to be set to the output directory for songs
+Optional variables: ALL_PROXY, YOUTUBE_DL_CACHE, YOUTUBE_DL_DOWNLOADS
+'''
 
 import sys
+import os
 import os.path
 import subprocess
-import os
 import pathlib
 import importlib
 import logging
@@ -26,7 +28,7 @@ if __name__ == "__main__" and (__package__ is None or __package__ == ""):
         sys.path.pop(0)
     _fix_relative_import()
 
-from . import ffmpy
+from . import ffmpy # pylint: disable=wrong-import-position
 
 def _import_single_module(module_path, module_name):
     '''Imports and returns a single module by path relative to the script directory'''
@@ -37,7 +39,7 @@ def _import_single_module(module_path, module_name):
     sys.path.pop(0)
     return module
 
-youtube_dl = _import_single_module('youtube-dl', 'youtube_dl')
+youtube_dl = _import_single_module('youtube-dl', 'youtube_dl') # pylint: disable=invalid-name
 
 # Constants
 OUTPUT_DIR = os.environ['SONG_OUTPUT']
@@ -79,7 +81,7 @@ def _format_name(raw_name):
 # List of current songs
 _OUTPUT_FILES = [_format_name(x.stem) for x in pathlib.Path(OUTPUT_DIR).iterdir()]
 
-class Action:
+class Action: # pylint: disable=too-few-public-methods
     '''Enum of command-line actions'''
     SPLIT = 'split'
     CHECK_NEW = 'check_new'
@@ -87,7 +89,8 @@ class Action:
 
 def _is_name_existing(new_name, name_collection=_OUTPUT_FILES):
     '''Somewhat intelligently checks if a song already exists'''
-    # TODO: Perhaps compare song tuples. If names are prefixes of one another, then check if duration differs by more than 3 seconds to determine if different song
+    # TODO: Perhaps compare song tuples. If names are prefixes of one another,
+    # then check if duration differs by more than 3 seconds to determine if different song
     new_name = _format_name(new_name).replace('_', '')
     for existing_name in name_collection:
         existing_name = existing_name.replace('_', '')
@@ -119,6 +122,7 @@ def _parse_songlist(raw_data):
         if not start_time.replace(':', '').encode('UTF-8').isdigit():
             raise Exception('Invalid start time for entry "{}"'.format(raw_entry))
         if not pending_entry is None:
+            # pylint: disable=unsubscriptable-object
             songs.append((
                 pending_entry[0],
                 start_time,
@@ -138,7 +142,9 @@ def _split_file(compilation_path, compilation_title, compilation_author, compila
         output_path = _get_output_path(raw_name)
         if not _is_name_existing(raw_name):
             output_args = [
-                '-metadata:s:a', 'comment=From the compilation "{}". {}'.format(compilation_title, compilation_url),
+                '-metadata:s:a',
+                'comment=From the compilation "{}". {}'.format(
+                    compilation_title, compilation_url),
                 '-metadata:s:a', 'album={}'.format(compilation_author),
                 '-metadata:s:a', 'album_artist={}'.format(compilation_author),
                 '-metadata:s:a', 'artist={}'.format(compilation_author),
@@ -148,7 +154,7 @@ def _split_file(compilation_path, compilation_title, compilation_author, compila
             ]
             if end_time:
                 output_args.extend(('-to', end_time))
-            ff = ffmpy.FFmpeg(
+            ffmpeg_wrapper = ffmpy.FFmpeg(
                 #inputs={compilation_path: ['-ss', start_time]},
                 inputs={compilation_path: None},
                 outputs={
@@ -156,7 +162,7 @@ def _split_file(compilation_path, compilation_title, compilation_author, compila
                 }
             )
             logging.info('Parsing: "{}"'.format(raw_name))
-            ff.run(stderr=subprocess.DEVNULL)
+            ffmpeg_wrapper.run(stderr=subprocess.DEVNULL)
 
 def _process_file(action, compilation_title, compilation_author, compilation_path):
     '''Processes a file in the filesystem'''
@@ -164,29 +170,18 @@ def _process_file(action, compilation_title, compilation_author, compilation_pat
         with open(compilation_path) as input_file:
             songs = _parse_songlist(input_file.read())
     else:
-        '''
-        ffprobe = ffmpy.FFprobe(inputs={
-                compilation_path: ['-show_entries', 'stream_tags=comment', '-print_format', 'default=nokey=1:noprint_wrappers=1']
-            }
-        )
-        probe_stdout, probe_stderr = ffprobe.run(stderr=subprocess.DEVNULL, stdout=subprocess.PIPE)
-        songs = _parse_songlist(probe_stdout.decode('UTF-8'))
-        '''
         songs = _parse_songlist(sys.stdin.read())
     if action == Action.CHECK_NEW or action == Action.FILE_CHECK_NEW:
-        for start_time, end_time, raw_name in songs:
+        for _, _, raw_name in songs:
             if not _is_name_existing(raw_name):
                 logging.info('New song: "{}"'.format(raw_name))
     elif action == Action.SPLIT:
-        '''
-        ffprobe = ffmpy.FFprobe(inputs={
-                compilation_path: ['-show_entries', 'stream_tags=title', '-print_format', 'default=nokey=1:noprint_wrappers=1']
-            }
-        )
-        probe_stdout, probe_stderr = ffprobe.run(stderr=subprocess.DEVNULL, stdout=subprocess.PIPE)
-        compilation_title = probe_stdout.decode('UTF-8').rstrip()
-        '''
-        _split_file(compilation_path, compilation_title, compilation_author, '(from filesystem)', songs)
+        _split_file(
+            compilation_path,
+            compilation_title,
+            compilation_author,
+            '(from filesystem)',
+            songs)
     else:
         logging.critical('Invalid action "{}"'.format(action))
         exit(1)
@@ -228,7 +223,10 @@ def _youtubedl_hook(data):
         exit(1)
 
 def _get_songs_from_chapters(chapters):
-    '''Parses youtube-dl's chapters format into a list of tuples of (start_time, end_time, raw_name)'''
+    '''
+    Parses youtube-dl's chapters format into
+    a list of tuples of (start_time, end_time, raw_name)
+    '''
     songs = list()
     for chapter in chapters:
         songs.append((
@@ -260,7 +258,8 @@ def _process_youtube(action, proxy, compilation_urls):
 
     known_song_names = set()
     # TODO: Remove hardcoding
-    known_song_names.add('listen_again') # Hack to remove songs being repeated in The Soul of Wind compilations
+    # Hack to remove songs being repeated in The Soul of Wind compilations
+    known_song_names.add('listen_again')
     initial_known_song_names_size = len(known_song_names)
     url_to_new_songs = dict()
     url_to_metadata = dict()
@@ -289,24 +288,28 @@ def _process_youtube(action, proxy, compilation_urls):
             if chapters:
                 songs = _get_songs_from_chapters(chapters)
                 for song in songs:
-                    start_time, end_time, raw_name = song
+                    _, _, raw_name = song
                     formatted_name = _format_name(raw_name)
                     if '_' not in formatted_name:
-                        # Hack to detect songs with one word in them. These songs from this video will need to be qualified with an artist name later on
+                        # Hack to detect songs with one word in them.
+                        # These songs from this video will need to be qualified
+                        # with an artist name later on
                         logging.warning('Songs need qualification')
                         needs_qualification.add(url)
                         del url_to_metadata[url]
                         if url in url_to_new_songs:
                             del url_to_new_songs[url]
                         break
-                    if not _is_name_existing(raw_name, name_collection=known_song_names) and not _is_name_existing(raw_name):
+                    if (not _is_name_existing(raw_name, name_collection=known_song_names)
+                            and not _is_name_existing(raw_name)):
                         if url not in url_to_new_songs:
                             url_to_new_songs[url] = list()
                         url_to_new_songs[url].append(song)
                         known_song_names.add(formatted_name)
                         logging.info('Found new song: {}'.format(raw_name))
             else:
-                # TODO: If no chapters but song is short enough (<20 min?), then assume it is a single song and use video title as song name
+                # TODO: If no chapters but song is short enough (<20 min?),
+                # then assume it is a single song and use video title as song name
                 no_chapters.add(url)
                 logging.warning('Compilation has no chapters')
         if action == Action.CHECK_NEW:
@@ -321,10 +324,16 @@ def _process_youtube(action, proxy, compilation_urls):
             for url in url_to_new_songs:
                 compilation_id, compilation_title, compilation_author = url_to_metadata[url]
                 compilation_path = os.path.join(YOUTUBE_DL_DOWNLOADS, compilation_id + '.webm')
-                _split_file(compilation_path, compilation_title, compilation_author, url, url_to_new_songs[url])
+                _split_file(
+                    compilation_path,
+                    compilation_title,
+                    compilation_author,
+                    url,
+                    url_to_new_songs[url])
             logging.info('Done processing songs')
         if needs_qualification:
-            logging.info('Skipped URLs that need artist(s) names: {}'.format(str(needs_qualification)))
+            logging.info('Skipped URLs that need artist(s) names: {}'.format(
+                str(needs_qualification)))
         if needs_encoding:
             logging.info('Skipped URLs that need re-encoding: {}'.format(str(needs_encoding)))
         if no_chapters:
