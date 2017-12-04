@@ -1,0 +1,86 @@
+Tweaks to algorithm:
+
+* If length of song is at least around twice the length of the last timestamp (perhaps at least 5 seconds less than double the last timestamp), then the song is assumed to repeat.
+    * In this scenario, the number of times it repeats needs to be determined. This will be done by dividing the length of the compilation by the last timestamp, and finding the quotient. The quotient is used to divide the total length and determine the ending time for the last song.
+    * If the quotient == 1 (i.e. the compilation is around double the length, but a little less than double the last timestamp), then the last song is dropped.
+    * Else if the last song will be 5 seconds or less, then it is dropped.
+
+* Use fuzzywuzzy (https://github.com/seatgeek/fuzzywuzzy)
+
+Refactoring notes below:
+
+def _normalize_name(raw_name): # Returns a normalized name
+
+def _get_youtube_id(url) # Parses URL and returns YouTube video ID
+
+class Mix:
+    @staticmethod
+    def _info_to_song_generator(info):
+        # Parses youtube-dl info and yields Song instances
+
+    def __init__(self, youtubedl_info):
+        # Initialize a new Mix
+        # self.url is URL from youtubedl_info
+        # self.id is YouTube video ID from url or youtubedl_info
+
+        # self.name is compilation name from youtubedl_info
+        self._songs = list(self._info_to_song_generator(info))
+
+    # TODO: Hashable via YouTube video ID
+
+    # TODO: Implement __eq__ with other Mix, YouTube video URL, or YouTube Video ID
+    
+    # TODO: Implement iterator with self._songs
+
+    # TODO: Implement len() with self._songs
+
+    # Ignoring the following because it's not used anywhere else.
+    # TODO: Implement subscripting (song index lookup) with self._songs
+
+class Song:
+    @classmethod
+    def from_file(cls, path):
+        # Returns a Song from a file located by a pathlib.Path-like object
+        # downloaded = True
+
+    def __init__(self, duration, downloaded=False, start_time=None, end_time=None, normalized_name=None, raw_name=None, file_extension='ogg', compilation=None):
+        # Constructor of a Song. To be invoked by from_file() or by Mix
+        self.duration = duration
+        self.downloaded = downloaded
+        self.start_time = start_time
+        self.end_time = end_time
+        self.normalized_name = normalized_name
+        self.raw_name = raw_name
+        self.compilation = compilation
+        self.file_extension = file_extension
+
+        if self.normalized_name is None:
+            # Normalize the name
+
+        if duration is None:
+            if start_time is None or end_time is None:
+                raise Exception('Both start_time and end_time must be defined when duration is not specified.')
+
+    # TODO: Implement __eq__ to do intelligent checking with normalized name, duration, and possibly other parameters like compilation.
+
+class SongCollector:
+    def __init__(self):
+        self._known_songs = dict() # normalized_name -> Song
+        self._new_songs = dict() # Mix -> Song
+
+    def add_mixes(self, mix_iterable): # Add new songs from Mix into the collector
+
+    def add_directory(self, path): # Add known songs named by normalized name into collector
+
+    def new_mixes_iterator(): # Returns new iterator of Mix for new mixes
+
+    def new_songs_iterator(mix): # Returns new iterator of Song for new songs in the given mix
+
+def main(...):
+    mixes = set()
+    # Initialize SongCollector
+    # Add directory into SongCollector
+    # Get URLs, check via YouTube ID if in mixes. If not, create new Mix and put it in mixes
+    # Parse mixes into SongCollector
+    # Download or print out new songs from iterators in SongCollector
+    # Print warning if no songs found in mix.
