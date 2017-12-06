@@ -6,12 +6,32 @@ TODO: Rewrite description
 Intercepts the GNOME Proxy advertised via D-Bus with the one specified to this program
 '''
 
+# TODO: Add mechanism to safely shut-down via KeyboardInterrupt and other means
+
 import argparse
 import logging
 import os
 import sys
 
 from gi.repository import Gio, GLib, GObject
+
+def _get_unique_name_property(self):
+    current_name = self.get_unique_name()
+    if current_name:
+        return current_name
+    else:
+        try:
+            return self._detected_unique_name
+        except AttributeError:
+            return None
+
+def _set_unique_name_property(self, value):
+    if not Gio.dbus_is_name(value):
+        _get_logger().error('Not a valid D-Bus unique name: {}'.format(value))
+    self._detected_unique_name = value
+
+Gio.DBusConnection.detected_name = property(
+    _get_unique_name_property, _set_unique_name_property)
 
 class _ConnectionType:
     '''Enum for coordinator or worker D-Bus connection types'''
@@ -52,17 +72,12 @@ def _callback_close(source_object, res, user_data):
     if not source_object.close_finish(res):
         _get_logger().error('A close command failed')
 
-#def _callback_flush(source_object, res, user_data):
-#    '''Callback for a message flush command'''
-#    if not source_object.flush_finish(res):
-#        _get_logger().error('A flush command failed')
-
 def _callback_coordinator_filter(connection, message, incoming, user_data):
     '''Callback for a D-Bus connection filter'''
     other_connection, other_type = user_data
     _get_logger().debug(
-        'Message: incoming: {}, other pair: {}, type: {}, path: {}, arg0: {}, member: {}'.format(
-            incoming, other_type, message.get_message_type(), message.get_path(), message.get_arg0(), message.get_member()
+        'Message: incoming: {}, other pair: {}, type: {}, path: {}, arg0: {}, member: {}, sender: {}, destination: {}'.format(
+            incoming, other_type, message.get_message_type(), message.get_path(), message.get_arg0(), message.get_member(), message.get_sender(), message.get_destination()
         )
     )
     if incoming:
@@ -73,9 +88,33 @@ def _callback_coordinator_filter(connection, message, incoming, user_data):
                 callback=_callback_close,
                 user_data=None,
             )
-            return None
         else:
-            other_connection.send_message(message, Gio.DBusSendMessageFlags.PRESERVE_SERIAL)
+            if other_type == _ConnectionType.WORKER:
+                name = message.get_destination()
+                if not other_connection.detected_name and name:
+                    other_connection.detected_name = name
+                if not name:
+                    if message.get_locked():
+                        new_message = message.copy()
+                        message._unref()
+                        message = new_message
+                    message.set_destination(other_connection.detected_name)
+                    message.lock()
+            elif other_type == _ConnectionType.COORDINATOR:
+                if not message.get_sender() and other_connection.detected_name:
+                    if message.get_locked():
+                        new_message = message.copy()
+                        message._unref()
+                        message = new_message
+                    message.set_sender(other_connection.detected_name)
+                    message.lock()
+            else:
+                _get_logger().error('Unknown other_type: {}'.format(other_type))
+            success, _ = other_connection.send_message(message, Gio.DBusSendMessageFlags.PRESERVE_SERIAL)
+            if not success:
+                _get_logger().error('Failed to send message in other connection')
+        # For some reason, all incoming messages need to be dropped to make communication work
+        return None
     if connection.is_closed():
         _get_logger().debug('Connection closed during filter')
         other_connection.close(
