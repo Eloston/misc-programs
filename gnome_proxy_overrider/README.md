@@ -1,4 +1,4 @@
-# GNOME Proxy Launcher
+# GNOME Proxy Overrider 
 
 TODO: Description
 

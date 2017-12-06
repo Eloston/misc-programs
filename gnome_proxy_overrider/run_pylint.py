@@ -8,6 +8,6 @@ if __name__ == "__main__":
     from pylint import epylint as lint
     import pathlib
 
-    lint.lint(filename=str(pathlib.Path(__file__).parent / "gnome_proxy_launcher.py"),
+    lint.lint(filename=str(pathlib.Path(__file__).parent / "gnome_proxy_overrider.py"),
               options=["--disable=logging-format-interpolation",
                        "--disable=locally-disabled"])
