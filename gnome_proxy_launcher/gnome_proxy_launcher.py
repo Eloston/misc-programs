@@ -1,94 +1,195 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-'''Intercepts the GNOME Proxy advertised via D-Bus with the one specified to this program'''
+'''
+TODO: Rewrite description
+Intercepts the GNOME Proxy advertised via D-Bus with the one specified to this program
+'''
 
+import argparse
+import logging
+import os
 import sys
 
-from gi.repository import Gio, GLib
+from gi.repository import Gio, GLib, GObject
 
-def _signal_received(connection, sender_name, object_path, interface_name, signal_name, parameters, user_data):
-    '''
-    Forward a received signal to the other connection. The other connection is specified in
-    user_data.
+class _ConnectionType:
+    '''Enum for coordinator or worker D-Bus connection types'''
+    COORDINATOR = 'coordinator'
+    WORKER = 'worker'
 
-    This implements the Gio.DBusSignalCallback interface.
-    '''
-    user_data.emit_signal(
-        destination_bus_name=user_data.get_unique_name(),
-        object_path=object_path,
-        interface_name=interface_name,
-        signal_name=signal_name,
-        parameters=parameters
+class _PyGObject(GObject.Object):
+    '''For use in passing data in signal handlers'''
+    __gtype_name__ = "PyGObject"
+
+    def __init__(self, payload):
+        super().__init__()
+        self.payload = payload
+
+def _get_logger(name=None, level=logging.DEBUG):
+    '''Gets the named logger'''
+
+    logger = logging.getLogger(name)
+
+    if not logger.hasHandlers():
+        logger.setLevel(logging.DEBUG)
+
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(level)
+
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s: %(message)s")
+        console_handler.setFormatter(formatter)
+
+        logger.addHandler(console_handler)
+        if name is None:
+            logger.info("Initialized root logger")
+        else:
+            logger.info("Initialized logger '{}'".format(name))
+    return logger
+
+def _callback_close(source_object, res, user_data):
+    '''Callback for a D-Bus connection close'''
+    if not source_object.close_finish(res):
+        _get_logger().error('A close command failed')
+
+#def _callback_flush(source_object, res, user_data):
+#    '''Callback for a message flush command'''
+#    if not source_object.flush_finish(res):
+#        _get_logger().error('A flush command failed')
+
+def _callback_coordinator_filter(connection, message, incoming, user_data):
+    '''Callback for a D-Bus connection filter'''
+    other_connection, other_type = user_data
+    _get_logger().debug(
+        'Message: incoming: {}, other pair: {}, type: {}, path: {}, arg0: {}, member: {}'.format(
+            incoming, other_type, message.get_message_type(), message.get_path(), message.get_arg0(), message.get_member()
+        )
     )
-
-def _get_regular_client_connection():
-    '''Connects to the real D-Bus session bus as a client'''
-    client_connection = Gio.DBusConnection.new_for_address_sync(
-            address='unix:path=/run/user/1000/bus', # TODO: Find this in a more intelligent manner
-            flags=Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
-                | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
-            observer=None,
+    if incoming:
+        if other_connection.is_closed():
+            _get_logger().debug('Other connection already closed during filter')
+            connection.close(
+                cancellable=None,
+                callback=_callback_close,
+                user_data=None,
+            )
+            return None
+        else:
+            other_connection.send_message(message, Gio.DBusSendMessageFlags.PRESERVE_SERIAL)
+    if connection.is_closed():
+        _get_logger().debug('Connection closed during filter')
+        other_connection.close(
             cancellable=None,
-    )
-    return client_connection
+            callback=_callback_close,
+            user_data=None,
+        )
+    return message
 
-def _get_stdin_server_connection(client_connection):
-    '''
-    Initializes the D-Bus server running on standard input
-    '''
-    stdin_stream = Gio.UnixInputStream.new(
-        fd=sys.stdin.fileno(),
-        close_fd=False,
+def _hook_dbus_connections(worker_dbus_connection, coordinator_dbus_connection):
+    coordinator_dbus_connection.add_filter(
+        filter_function=_callback_coordinator_filter,
+        user_data=(worker_dbus_connection, _ConnectionType.WORKER),
     )
-    stdout_stream = Gio.UnixOutputStream.new(
-        fd=sys.stdout.fileno(),
-        close_fd=False,
+    worker_dbus_connection.add_filter(
+        filter_function=_callback_coordinator_filter,
+        user_data=(coordinator_dbus_connection, _ConnectionType.COORDINATOR),
     )
-    io_stream = Gio.SimpleIOStream.new(
-        input_stream=stdin_stream,
-        output_stream=stdout_stream,
-    )
-    server_connection = Gio.DBusConnection.new_sync(
-        stream=io_stream,
-        guid=client_connection.get_guid(),
+
+def _callback_new_worker_dbus_connection(source_object, res, coordinator_dbus_connection): #pylint: disable=invalid-name
+    worker_dbus_connection = Gio.DBusConnection.new_finish(res)
+    _get_logger().debug('Worker GUID: {}'.format(
+        worker_dbus_connection.get_guid()
+    ))
+
+    _hook_dbus_connections(worker_dbus_connection, coordinator_dbus_connection)
+
+def _callback_new_coordinator_dbus_connection(source_object, res, worker_socket_connection): #pylint: disable=invalid-name
+    '''Callback for `Gio.DBusConnection.new_for_address` in context of server setup'''
+    coordinator_dbus_connection = Gio.DBusConnection.new_for_address_finish(res)
+    _get_logger().debug('Coordinator GUID: {}'.format(
+        coordinator_dbus_connection.get_guid()
+    ))
+
+    # Create worker D-Bus connection
+    Gio.DBusConnection.new(
+        stream=worker_socket_connection,
+        guid=coordinator_dbus_connection.get_guid(),
         flags=Gio.DBusConnectionFlags.AUTHENTICATION_SERVER
-            | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+        | Gio.DBusConnectionFlags.AUTHENTICATION_ALLOW_ANONYMOUS,
         observer=None,
         cancellable=None,
-    )
-    return server_connection
-
-def main():
-    client_connection = _get_regular_client_connection()
-    server_connection = _get_stdin_server_connection(client_connection)
-
-    print('client bus name: {}'.format(client_connection.get_unique_name()), file=sys.stderr)
-    print('server bus name: {}'.format(server_connection.get_unique_name()), file=sys.stderr)
-
-    # Hook into signals
-    server_connection.signal_subscribe(
-        sender=None,
-        interface_name=None,
-        member=None,
-        object_path=None,
-        arg0=None,
-        flags=Gio.DBusSignalFlags.NONE,
-        callback=_signal_received,
-        user_data=client_connection,
-    )
-    client_connection.signal_subscribe(
-        sender=None,
-        interface_name=None,
-        member=None,
-        object_path=None,
-        arg0=None,
-        flags=Gio.DBusSignalFlags.NONE,
-        callback=_signal_received,
-        user_data=server_connection,
+        callback=_callback_new_worker_dbus_connection,
+        user_data=coordinator_dbus_connection
     )
 
-    # TODO: Hook into messages
+def _handle_new_worker_socket_connection(socket_service, worker_socket_connection, source_object): #pylint: disable=invalid-name
+    '''Handles the `Gio.SocketService`'s `incoming` signal'''
+    server_address = source_object.payload
+    if not server_address:
+        raise ValueError('Invalid value for server_address')
+
+    # Create coordinator D-Bus connection
+    Gio.DBusConnection.new_for_address(
+        address=server_address,
+        flags=Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT,
+        #| Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+        observer=None,
+        cancellable=None,
+        callback=_callback_new_coordinator_dbus_connection,
+        user_data=worker_socket_connection
+    )
+
+    return False # To allow other handlers get called
+
+def _setup_unix_socket_server(path, server_address):
+    '''
+    Initializes the D-Bus server listening on UNIX socket at `path` in filesystem.
+
+    `path` is a path in the filesystem for the domain socket
+    '''
+    # NOTE: There does exist Gio.DBusServer (gio/gdbusserver.c in GLib), but it is synchronous only.
+    # This implementation is async
+    socket_service = Gio.SocketService.new()
+    socket_service.connect('incoming', _handle_new_worker_socket_connection)
+    success, _ = socket_service.add_address(
+        address=Gio.UnixSocketAddress.new(path),
+        type=Gio.SocketType.STREAM,
+        protocol=Gio.SocketProtocol.DEFAULT,
+        source_object=_PyGObject(server_address),
+    )
+    if not success:
+        raise RuntimeError('Could not add address to Gio.SocketService')
+
+def _setup_management_connection(server_address):
+    '''Setup the D-Bus client connection for managing this application'''
+    pass # TODO
+
+def main(args_list):
+    '''Entrypoint'''
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        'listen_socket_path',
+        help='The UNIX socket path to listen on'
+    )
+    parser.add_argument(
+        '--server-address',
+        required=False,
+        default=os.environ['DBUS_SESSION_BUS_ADDRESS'],
+        help='The D-Bus address to connect to. Defaults to $DBUS_SESSION_BUS_ADDRESS'
+    )
+    args = parser.parse_args(args_list)
+
+    logger = _get_logger()
+
+    if not Gio.dbus_is_supported_address(args.server_address):
+        logger.error('Invalid server address: {}'.format(args.server_address))
+        exit(1)
+
+    _setup_unix_socket_server(args.listen_socket_path, args.server_address)
+
+    _setup_management_connection(args.server_address)
+
+    GLib.MainLoop().run()
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])
