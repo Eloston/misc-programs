@@ -91,25 +91,21 @@ def _callback_coordinator_filter(connection, message, incoming, user_data):
         else:
             if other_type == _ConnectionType.WORKER:
                 name = message.get_destination()
-                if not other_connection.detected_name and name:
-                    other_connection.detected_name = name
-                if not name:
-                    if message.get_locked():
-                        new_message = message.copy()
-                        message._unref()
-                        message = new_message
-                    message.set_destination(other_connection.detected_name)
-                    message.lock()
+                message_setter = Gio.DBusMessage.set_destination
             elif other_type == _ConnectionType.COORDINATOR:
-                if not message.get_sender() and other_connection.detected_name:
-                    if message.get_locked():
-                        new_message = message.copy()
-                        message._unref()
-                        message = new_message
-                    message.set_sender(other_connection.detected_name)
-                    message.lock()
+                name = message.get_sender()
+                message_setter = Gio.DBusMessage.set_sender
             else:
-                _get_logger().error('Unknown other_type: {}'.format(other_type))
+                raise ValueError('Unknown other_type: {}'.format(other_type))
+            if name and not other_connection.detected_name == name:
+                other_connection.detected_name = name
+            if not name and other_connection.detected_name:
+                if message.get_locked():
+                    new_message = message.copy()
+                    message._unref()
+                    message = new_message
+                message_setter(message, other_connection.detected_name)
+                message.lock()
             success, _ = other_connection.send_message(message, Gio.DBusSendMessageFlags.PRESERVE_SERIAL)
             if not success:
                 _get_logger().error('Failed to send message in other connection')
