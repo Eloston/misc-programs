@@ -13,8 +13,8 @@ Tested on Python 3. Requires PyGObject.
 1. Run the proxy: `python3 dbus_proxy.py /path/to/bus_proxy` where `/path/to/proxy_bus` is a path for a new UNIX socket to be created.
 2. Set the environment variable `DBUS_SESSION_BUS_ADDRESS` to `unix:path=/path/to/proxy_bus` for the application that should use the proxy.
 3. To shut down the proxy:
-    a. Since the proxy doesn't have any clean-up mechanisms, make sure to **first** close all applications that use the proxy.
-    b. Kill the proxy process, e.g. a keyboard interrupt if running in a terminal
+    1. Since the proxy doesn't have any clean-up mechanisms, make sure to **first** close all applications that use the proxy.
+    2. Kill the proxy process, e.g. a keyboard interrupt if running in a terminal
 
 The proxy has other command-line arguments. Pass in `--help` for more info.
 
