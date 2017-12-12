@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 '''
-TODO: Rewrite description
-Intercepts the GNOME Proxy advertised via D-Bus with the one specified to this program
+A D-Bus message bus proxy.
 '''
 
-# TODO: Add mechanism to safely shut-down via KeyboardInterrupt and other means
+# TODO: Add mechanism to safely shut-down via KeyboardInterrupt and also via a custom D-Bus method on the worker bus side
+# TODO: Store process PID file somewhere if running as headless daemon
 
 import argparse
 import logging
