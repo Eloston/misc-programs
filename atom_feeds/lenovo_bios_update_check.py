@@ -11,6 +11,15 @@ Takes in two arguments: computer_name update_url
 - update_url is the page for a specific driver download, like http://pcsupport.lenovo.com/us/en/products/LAPTOPS-AND-NETBOOKS/THINKPAD-L-SERIES-LAPTOPS/THINKPAD-L460/downloads/DS112198
 """
 
+# TODO: Homepage for backup driver download site:
+# https://download.lenovo.com/supportdata/index.html
+# All machine drivers available at URLs like this:
+# https://download.lenovo.com/supportdata/Product/LAPTOPS-AND-NETBOOKS/THINKPAD-L-SERIES-LAPTOPS/THINKPAD-L460.json
+# https://download.lenovo.com/supportdata/Product/LAPTOPS-AND-NETBOOKS/THINKPAD-X-SERIES-LAPTOPS/THINKPAD-X1-CARBON-TYPE-20HR-20HQ.json
+# Driver page info metadata, but it's out of date compared to the machine info:
+# https://download.lenovo.com/supportdata/Driver/DS112198.en.json
+# Languages: en for English, ko for Korean, ja for Japanese
+
 import urllib.request
 import sys
 import shlex
