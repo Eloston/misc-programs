@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 Parses the a Lenovo BIOS update page for version info
 
 Constants can be modified to be used with other BIOS update pages
 
-Takes in two arguments: computer_name update_url
+Takes in one argument: computer_name
 - computer_name is a string like L460
-- update_url is the page for a specific driver download, like http://pcsupport.lenovo.com/us/en/products/LAPTOPS-AND-NETBOOKS/THINKPAD-L-SERIES-LAPTOPS/THINKPAD-L460/downloads/DS112198
+
+It reads the update page contents from standard input. The update page can be obtained from
+a URL like: http://pcsupport.lenovo.com/us/en/products/LAPTOPS-AND-NETBOOKS/THINKPAD-L-SERIES-LAPTOPS/THINKPAD-L460/downloads/DS112198
 """
 
 # TODO: Homepage for backup driver download site:
@@ -20,14 +21,15 @@ Takes in two arguments: computer_name update_url
 # https://download.lenovo.com/supportdata/Driver/DS112198.en.json
 # Languages: en for English, ko for Korean, ja for Japanese
 
-import urllib.request
-import sys
-import shlex
+import base64
 import datetime
 import html
 import json
+import re
+import sys
 
 import bs4
+import lz4.block # python-lz4 from pypi version 2.1.0
 import pyatom
 
 _FILE_ITEM_HTML = """
@@ -57,7 +59,41 @@ _MAIN_DESCRIPTION_HTML = """
 </p>
 """
 
-def parse_support_page(feed, update_url):
+_DS_GETCONTENT_REGEX = re.compile(
+    r'ds_getcontent[ ]*?=[ ]*?l\.Common\.lz4Decode\((?P<arg_dict>[a-zA-Z0-9+/ =",:{}]+?)\);')
+
+
+def _parse_ds_getcontent(soup):
+    """Returns the processed ds_getcontent body"""
+    match = None
+    for script_element in soup.find_all('script'):
+        if len(script_element.contents) == 1:
+            match = _DS_GETCONTENT_REGEX.search(script_element.contents[0].replace('\n', ''))
+            if match:
+                break
+    assert match
+    lz4decode_jsonarg = json.loads(match.group('arg_dict'))
+    lz4decode_base64 = lz4decode_jsonarg['content']
+    lz4decode_originlength = lz4decode_jsonarg['originLength']
+    lz4decode_compressed = base64.b64decode(lz4decode_base64)
+    ds_getcontent_bytes = lz4.block.decompress(
+        lz4decode_compressed, uncompressed_size=lz4decode_originlength)
+    return json.loads(ds_getcontent_bytes.decode('UTF-8'))
+
+
+def _get_update_url(soup):
+    """Returns the update URL used for the page"""
+    results = soup.find_all('meta', attrs={'name': 'canonical'})
+    if not len(results) == 1:
+        raise ValueError(
+            'Got {} results instead of 1 result for <meta name="canonical" ...>'.format(
+                len(results)))
+    meta_element = results[0]
+    assert 'content' in meta_element.attrs
+    return meta_element['content']
+
+
+def parse_support_page(feed, soup, update_url):
     """
     Returns a list of dictionaries containing:
     - The current version
@@ -65,18 +101,8 @@ def parse_support_page(feed, update_url):
     - The changes since the last version
     - Files for download which include names, URLs, and checksums
     """
-    with urllib.request.urlopen(update_url) as response:
-        soup = bs4.BeautifulSoup(response.read().decode("UTF-8"), "lxml")
-    ds_getcontent = None
-    for script_element in soup.find_all("script"):
-        if len(script_element.contents) == 1:
-            if script_element.contents[0].startswith("ds_productinfo"):
-                # Need to unescape twice. Once due to escaping to store in a
-                # JS string, and a second time to unescape escaped characters
-                # in the original HTML like nbsp
-                ds_getcontent = script_element.contents[0].split(";ds_getcontent=")[1].split(";ds_warranties=")[0]
+    ds_getcontent = _parse_ds_getcontent(soup)
     assert ds_getcontent
-    ds_getcontent = json.loads(ds_getcontent)
     file_html_items = list()
     for file_dict in ds_getcontent["Files"]:
         file_html_items.append(
@@ -86,48 +112,48 @@ def parse_support_page(feed, update_url):
                 size=file_dict["Size"],
                 download_url=file_dict["URL"],
                 md5=file_dict["MD5"],
-                sha256=file_dict["SHA256"]
-            )
-        )
+                sha256=file_dict["SHA256"]))
     main_html = _MAIN_DESCRIPTION_HTML.format(
-        file_html="\n".join(file_html_items),
-        body_html=html.unescape(ds_getcontent["Body"])
-    )
+        file_html="\n".join(file_html_items), body_html=html.unescape(ds_getcontent["Body"]))
+    feed_entry_id = str(ds_getcontent['Date']['Unix']) + ds_getcontent['Files'][0]['Version']
     feed.add(
         title=ds_getcontent["Files"][0]["Version"],
         content=main_html,
         content_type="html",
-        updated=datetime.datetime.utcfromtimestamp(ds_getcontent["Date"]["Unix"] // 1000),
+        updated=datetime.datetime.utcfromtimestamp(ds_getcontent["Updated"]["Unix"] // 1000),
         url=update_url,
-        id=ds_getcontent["Date"]["UTC"]
-    )
+        id=feed_entry_id)
 
-if __name__ == "__main__":
+
+def main():
+    """Entrypoint"""
     # Specify a string, like L460
     computer_name = sys.argv[1]
     # Specify a URL, like http://pcsupport.lenovo.com/us/en/products/LAPTOPS-AND-NETBOOKS/THINKPAD-L-SERIES-LAPTOPS/THINKPAD-L460/downloads/DS112198
-    update_url = sys.argv[2]
 
-    _ATOM_TITLE = "{} BIOS Updates".format(computer_name)
-    _ATOM_SUBTITLE = "View BIOS update changes for {}".format(computer_name)
+    atom_title = "{} Updates".format(computer_name)
+    atom_subtitle = "View software update changes for {}".format(computer_name)
+
+    soup = bs4.BeautifulSoup(sys.stdin.read(), "lxml")
+    update_url = _get_update_url(soup)
 
     def init_feed():
+        """Initialize the atom feed"""
         return pyatom.AtomFeed(
-            title=_ATOM_TITLE,
-            subtitle=_ATOM_SUBTITLE,
-            feed_url=update_url,
-            url=update_url
-        )
+            title=atom_title, subtitle=atom_subtitle, feed_url=update_url, url=update_url)
 
-    def exception_hook(*args):
+    def exception_hook(exc_type, exc_value, exc_traceback):
+        """Atom feed generator for exceptions"""
         feed = init_feed()
         time_of_exception = datetime.datetime.utcnow()
         import traceback
-        feed.add(title="Exception has occured!",
-                content="<p>" + "<br />".join(traceback.format_exception(*args)) + "</p>",
-                content_type="html",
-                updated=time_of_exception,
-                id=str(time_of_exception))
+        feed.add(
+            title="Exception has occured!",
+            content="<p>" + "<br />".join(
+                traceback.format_exception(exc_type, exc_value, exc_traceback)) + "</p>",
+            content_type="html",
+            updated=time_of_exception,
+            id=str(time_of_exception))
         print(feed.to_string())
         sys.exit()
 
@@ -135,5 +161,9 @@ if __name__ == "__main__":
 
     feed = init_feed()
 
-    parse_support_page(feed, update_url)
+    parse_support_page(feed, soup, update_url)
     print(feed.to_string())
+
+
+if __name__ == "__main__":
+    main()
