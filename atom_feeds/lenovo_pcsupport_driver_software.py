@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Parses the a Lenovo BIOS update page for version info
+Parses the a Lenovo Support "Drivers & Software" page for version info
 
-Constants can be modified to be used with other BIOS update pages
+Originally used for checking BIOS updates, but can be used with any Support page software download
 
 Takes in one argument: computer_name
 - computer_name is a string like L460
