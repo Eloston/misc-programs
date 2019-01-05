@@ -17,18 +17,16 @@ import pathlib
 import importlib
 import logging
 
-if __name__ == "__main__" and (__package__ is None or __package__ == ""):
-    def _fix_relative_import():
-        """Allow relative imports to work from anywhere"""
-        parent_path = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
-        sys.path.insert(0, os.path.dirname(parent_path))
-        global __package__ #pylint: disable=global-variable-undefined
-        __package__ = os.path.basename(parent_path) #pylint: disable=redefined-builtin
-        __import__(__package__)
-        sys.path.pop(0)
-    _fix_relative_import()
+def _import_single_module(module_path, module_name):
+    '''Imports and returns a single module by path relative to the script directory'''
+    current_dir = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+    module_dir = os.path.join(current_dir, module_path)
+    sys.path.insert(0, module_dir)
+    module = importlib.import_module(module_name)
+    sys.path.pop(0)
+    return module
 
-from . import ffmpy # pylint: disable=wrong-import-position
+ffmpy = _import_single_module('ffmpy', 'ffmpy')
 
 def _import_single_module(module_path, module_name):
     '''Imports and returns a single module by path relative to the script directory'''
@@ -290,16 +288,6 @@ def _process_youtube(action, proxy, compilation_urls):
                 for song in songs:
                     _, _, raw_name = song
                     formatted_name = _format_name(raw_name)
-                    if '_' not in formatted_name:
-                        # Hack to detect songs with one word in them.
-                        # These songs from this video will need to be qualified
-                        # with an artist name later on
-                        logging.warning('Songs need qualification')
-                        needs_qualification.add(url)
-                        del url_to_metadata[url]
-                        if url in url_to_new_songs:
-                            del url_to_new_songs[url]
-                        break
                     if (not _is_name_existing(raw_name, name_collection=known_song_names)
                             and not _is_name_existing(raw_name)):
                         if url not in url_to_new_songs:
