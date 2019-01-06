@@ -120,13 +120,24 @@ class SingleContext:
 
 # ---END MODIFIED SINGLETON CODE---
 
+class LocalHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    protocol_version = 'HTTP/1.0'
+
+    def _send_no_cache_headers(self):
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+
+    def end_headers(self):
+        self._send_no_cache_headers()
+        super().end_headers()
+
 def launch_server(single_context):
     # Code adapted from http.server.test() and https://stackoverflow.com/a/35387673
-    http.server.SimpleHTTPRequestHandler.protocol_version = 'HTTP/1.0'
     current_port = _DEFAULT_PORT
     while True:
         try:
-            httpd = http.server.HTTPServer((_DEFAULT_BIND, current_port), http.server.SimpleHTTPRequestHandler)
+            httpd = http.server.HTTPServer((_DEFAULT_BIND, current_port), LocalHTTPRequestHandler)
         except socket.error as exc:
             if exc.errno == errno.EADDRINUSE:
                 print('WARN: Port', current_port, 'already in use; trying', current_port+1)
