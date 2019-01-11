@@ -83,14 +83,14 @@ def _parse_ds_getcontent(soup):
 
 def _get_update_url(soup):
     """Returns the update URL used for the page"""
-    results = soup.find_all('meta', attrs={'name': 'canonical'})
+    results = soup.find_all('link', attrs={'rel': 'canonical'})
     if not len(results) == 1:
         raise ValueError(
-            'Got {} results instead of 1 result for <meta name="canonical" ...>'.format(
+            'Got {} results instead of 1 result for <link rel="canonical" ...>'.format(
                 len(results)))
-    meta_element = results[0]
-    assert 'content' in meta_element.attrs
-    return meta_element['content']
+    link_element = results[0]
+    assert 'href' in link_element.attrs
+    return link_element['href']
 
 
 def parse_support_page(feed, soup, update_url):
