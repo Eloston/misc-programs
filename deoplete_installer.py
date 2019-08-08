@@ -38,7 +38,7 @@ def main():
     parser.add_argument('-d', '--delete', action='store_true', help='Deletes the plugin without copying')
     parser.add_argument('type', choices=['nvim', 'jedi'])
     args = parser.parse_args()
-    cwd = Path(__file__).parent.resolve()
+    cwd = Path().resolve()
     nvim_config = Path(NVIM_CONFIG).expanduser().resolve()
     if args.type == 'nvim':
         plugin_files = NVIM_PLUGIN_FILES
