@@ -5,21 +5,14 @@ Parses the a Lenovo Support "Drivers & Software" page for version info
 
 Originally used for checking BIOS updates, but can be used with any Support page software download
 
-Takes in one argument: computer_name
-- computer_name is a string like L460
+Takes no arguments.
 
-It reads the update page contents from standard input. The update page can be obtained from
-a URL like: http://pcsupport.lenovo.com/us/en/products/LAPTOPS-AND-NETBOOKS/THINKPAD-L-SERIES-LAPTOPS/THINKPAD-L460/downloads/DS112198
+Usage:
+1. Get an update page URL like: https://pcsupport.lenovo.com/products/laptops-and-netbooks/thinkpad-x-series-laptops/thinkpad-x1-carbon-type-20hr-20hq/downloads/ds120390
+2. Take the last path component (e.g. ds120390) and add it to the following URL as follows:
+    https://pcsupport.lenovo.com/api/v4/downloads/driver?docId=ds120390
+3. Send the document's body at that URL as standard input to this program.
 """
-
-# TODO: Homepage for backup driver download site:
-# https://download.lenovo.com/supportdata/index.html
-# All machine drivers available at URLs like this:
-# https://download.lenovo.com/supportdata/Product/LAPTOPS-AND-NETBOOKS/THINKPAD-L-SERIES-LAPTOPS/THINKPAD-L460.json
-# https://download.lenovo.com/supportdata/Product/LAPTOPS-AND-NETBOOKS/THINKPAD-X-SERIES-LAPTOPS/THINKPAD-X1-CARBON-TYPE-20HR-20HQ.json
-# Driver page info metadata, but it's out of date compared to the machine info:
-# https://download.lenovo.com/supportdata/Driver/DS112198.en.json
-# Languages: en for English, ko for Korean, ja for Japanese
 
 import base64
 import datetime
@@ -28,8 +21,6 @@ import json
 import re
 import sys
 
-import bs4
-import lz4.block # python-lz4 from pypi version 2.1.0
 import pyatom
 
 _FILE_ITEM_HTML = """
@@ -45,6 +36,12 @@ _FILE_ITEM_HTML = """
 """
 
 _MAIN_DESCRIPTION_HTML = """
+<h2>Change Log</h2>
+<p>
+<div>
+{changelog_html}
+</div>
+</p>
 <h2>Files</h3>
 <p>
 <div>
@@ -59,41 +56,19 @@ _MAIN_DESCRIPTION_HTML = """
 </p>
 """
 
-_DS_GETCONTENT_REGEX = re.compile(
-    r'ds_getcontent[ ]*?=[ ]*?l\.Common\.lz4Decode\((?P<arg_dict>[a-zA-Z0-9+/ =",:{}]+?)\);')
+def _parse_driver_document(driver_document):
+    if not driver_document.get('message') == 'succeed':
+        raise ValueError(f'Unexpected message value: {driver_document.get("message")}')
+    assert 'body' in driver_document
+    return driver_document['body']['DriverDetails'], driver_document['body']['ChangeLogText']
 
+def _populate_feed_meta(feed_args, driver_details):
+    feed_args['url'] = 'https://pcsupport.lenovo.com/downloads/{}'.format(
+        driver_details["DocId"],
+    )
+    feed_args['title'] = driver_details['Title']
 
-def _parse_ds_getcontent(soup):
-    """Returns the processed ds_getcontent body"""
-    match = None
-    for script_element in soup.find_all('script'):
-        if len(script_element.contents) == 1:
-            match = _DS_GETCONTENT_REGEX.search(script_element.contents[0].replace('\n', ''))
-            if match:
-                break
-    assert match
-    lz4decode_jsonarg = json.loads(match.group('arg_dict'))
-    lz4decode_base64 = lz4decode_jsonarg['content']
-    lz4decode_originlength = lz4decode_jsonarg['originLength']
-    lz4decode_compressed = base64.b64decode(lz4decode_base64)
-    ds_getcontent_bytes = lz4.block.decompress(
-        lz4decode_compressed, uncompressed_size=lz4decode_originlength)
-    return json.loads(ds_getcontent_bytes.decode('UTF-8'))
-
-
-def _get_update_url(soup):
-    """Returns the update URL used for the page"""
-    results = soup.find_all('link', attrs={'rel': 'canonical'})
-    if not len(results) == 1:
-        raise ValueError(
-            'Got {} results instead of 1 result for <link rel="canonical" ...>'.format(
-                len(results)))
-    link_element = results[0]
-    assert 'href' in link_element.attrs
-    return link_element['href']
-
-
-def parse_support_page(feed, soup, update_url):
+def populate_feed_entries(feed, driver_details, changelog_text):
     """
     Returns a list of dictionaries containing:
     - The current version
@@ -101,10 +76,8 @@ def parse_support_page(feed, soup, update_url):
     - The changes since the last version
     - Files for download which include names, URLs, and checksums
     """
-    ds_getcontent = _parse_ds_getcontent(soup)
-    assert ds_getcontent
     file_html_items = list()
-    for file_dict in ds_getcontent["Files"]:
+    for file_dict in driver_details["Files"]:
         file_html_items.append(
             _FILE_ITEM_HTML.format(
                 name=file_dict["Name"],
@@ -114,37 +87,32 @@ def parse_support_page(feed, soup, update_url):
                 md5=file_dict["MD5"],
                 sha256=file_dict["SHA256"]))
     main_html = _MAIN_DESCRIPTION_HTML.format(
-        file_html="\n".join(file_html_items), body_html=html.unescape(ds_getcontent["Body"]))
-    feed_entry_id = str(ds_getcontent['Date']['Unix']) + ds_getcontent['Files'][0]['Version']
+        changelog_html=html.escape(changelog_text if changelog_text else '(Unspecified)'),
+        file_html="\n".join(file_html_items),
+        body_html=html.unescape(driver_details["Body"]),
+    )
+    feed_entry_id = str(driver_details['Date']['Unix']) + driver_details['Files'][0]['Version']
     feed.add(
-        title=ds_getcontent["Files"][0]["Version"],
+        title=driver_details["Files"][0]["Version"],
         content=main_html,
         content_type="html",
-        updated=datetime.datetime.utcfromtimestamp(ds_getcontent["Updated"]["Unix"] // 1000),
-        url=update_url,
+        updated=datetime.datetime.utcfromtimestamp(driver_details["Updated"]["Unix"] // 1000),
         id=feed_entry_id)
 
 
 def main():
     """Entrypoint"""
-    # Specify a string, like L460
-    computer_name = sys.argv[1]
-    # Specify a URL, like http://pcsupport.lenovo.com/us/en/products/LAPTOPS-AND-NETBOOKS/THINKPAD-L-SERIES-LAPTOPS/THINKPAD-L460/downloads/DS112198
-
-    atom_title = "{} Updates".format(computer_name)
-    atom_subtitle = "View software update changes for {}".format(computer_name)
-
-    soup = bs4.BeautifulSoup(sys.stdin.read(), "lxml")
-    update_url = _get_update_url(soup)
-
-    def init_feed():
-        """Initialize the atom feed"""
-        return pyatom.AtomFeed(
-            title=atom_title, subtitle=atom_subtitle, feed_url=update_url, url=update_url)
+    # This should NOT be replaced; it should be updated so that
+    # exception_hook can use this instance to create its own special
+    # feed with as accurate arguments as possible
+    feed_args = dict(
+        title='(Unknown Lenovo pcsupport driver)',
+        url='about:blank'
+    )
 
     def exception_hook(exc_type, exc_value, exc_traceback):
         """Atom feed generator for exceptions"""
-        feed = init_feed()
+        feed = pyatom.AtomFeed(**feed_args)
         time_of_exception = datetime.datetime.utcnow()
         import traceback
         feed.add(
@@ -156,12 +124,21 @@ def main():
             id=str(time_of_exception))
         print(feed.to_string())
         sys.exit()
-
     sys.excepthook = exception_hook
 
-    feed = init_feed()
+    # Load driver details
+    driver_document = json.load(sys.stdin)
+    driver_details, changelog_text = _parse_driver_document(driver_document)
+    assert driver_details
 
-    parse_support_page(feed, soup, update_url)
+    # Setup feed and metadata
+    _populate_feed_meta(feed_args, driver_details)
+    feed = pyatom.AtomFeed(**feed_args)
+
+    # Populate feed entries
+    populate_feed_entries(feed, driver_details, changelog_text)
+
+    # Output feed
     print(feed.to_string())
 
 
