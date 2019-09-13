@@ -6,5 +6,6 @@ Currently, all scripts read data from standard input so they can be used as Life
 
 Current conversion filters:
 
+* `geforce_drivers.py` - Get a feed for NVIDIA GeForce dirver updates (via APIs in https://www.geforce.com/drivers)
 * `lenovo_pcsupport_driver_software.py` - Generates an Atom feed of one item for the latest version of a pcsupport.lenovo.com driver download. Tested on firmware update downloads.
 * `omahaproxy.py` - Converts omahaproxy.appspot.com data into an Atom feed.

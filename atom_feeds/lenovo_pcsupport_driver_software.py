@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Parses the a Lenovo Support "Drivers & Software" page for version info
+Parses the a Lenovo Support "Drivers & Software" page for latest versions
 
-Originally used for checking BIOS updates, but can be used with any Support page software download
+Designed for use as a conversion filter for Liferea (news aggregator).
 
 Takes no arguments.
 
@@ -12,6 +12,7 @@ Usage:
 2. Take the last path component (e.g. ds120390) and add it to the following URL as follows:
     https://pcsupport.lenovo.com/api/v4/downloads/driver?docId=ds120390
 3. Send the document's body at that URL as standard input to this program.
+4. This program's standard output is the Atom feed.
 """
 
 import base64
@@ -70,11 +71,7 @@ def _populate_feed_meta(feed_args, driver_details):
 
 def populate_feed_entries(feed, driver_details, changelog_text):
     """
-    Returns a list of dictionaries containing:
-    - The current version
-    - The release date
-    - The changes since the last version
-    - Files for download which include names, URLs, and checksums
+    Populate AtomFeed with entries
     """
     file_html_items = list()
     for file_dict in driver_details["Files"]:
