@@ -1,0 +1,135 @@
+{
+    "version": 2,
+    "recentDestinations": [
+        {
+            "id": "Save as PDF",
+            "origin": "local",
+            "account": "",
+            "capabilities": {
+                "printer": {
+                    "color": {
+                        "option": [
+                            {
+                                "is_default": true,
+                                "type": "STANDARD_COLOR",
+                                "vendor_id": "2"
+                            }
+                        ]
+                    },
+                    "media_size": {
+                        "option": [
+                            {
+                                "height_microns": 1189000,
+                                "name": "ISO_A0",
+                                "width_microns": 841000,
+                                "custom_display_name": "A0"
+                            },
+                            {
+                                "height_microns": 841000,
+                                "name": "ISO_A1",
+                                "width_microns": 594000,
+                                "custom_display_name": "A1"
+                            },
+                            {
+                                "height_microns": 594000,
+                                "name": "ISO_A2",
+                                "width_microns": 420000,
+                                "custom_display_name": "A2"
+                            },
+                            {
+                                "height_microns": 420000,
+                                "name": "ISO_A3",
+                                "width_microns": 297000,
+                                "custom_display_name": "A3"
+                            },
+                            {
+                                "height_microns": 297000,
+                                "name": "ISO_A4",
+                                "width_microns": 210000,
+                                "custom_display_name": "A4"
+                            },
+                            {
+                                "height_microns": 210000,
+                                "name": "ISO_A5",
+                                "width_microns": 148000,
+                                "custom_display_name": "A5"
+                            },
+                            {
+                                "height_microns": 355600,
+                                "name": "NA_LEGAL",
+                                "width_microns": 215900,
+                                "custom_display_name": "Legal"
+                            },
+                            {
+                                "height_microns": 279400,
+                                "is_default": true,
+                                "name": "NA_LETTER",
+                                "width_microns": 215900,
+                                "custom_display_name": "Letter"
+                            },
+                            {
+                                "height_microns": 431800,
+                                "name": "NA_LEDGER",
+                                "width_microns": 279400,
+                                "custom_display_name": "Tabloid"
+                            }
+                        ]
+                    },
+                    "page_orientation": {
+                        "option": [
+                            {
+                                "type": "PORTRAIT"
+                            },
+                            {
+                                "type": "LANDSCAPE"
+                            },
+                            {
+                                "is_default": true,
+                                "type": "AUTO"
+                            }
+                        ]
+                    }
+                },
+                "version": "1.0"
+            },
+            "displayName": "Save as PDF",
+            "extensionId": "",
+            "extensionName": ""
+        },
+        {
+            "id": "PDF",
+            "origin": "local",
+            "account": "",
+            "capabilities": null,
+            "name": "",
+            "extensionId": "",
+            "extensionName": ""
+        }
+    ],
+    "isCollateEnabled": true,
+    "isColorEnabled": true,
+    "isCssBackgroundEnabled": true,
+    "customMargins": {
+        "marginTop": 36,
+        "marginRight": 36,
+        "marginBottom": 36,
+        "marginLeft": 36
+    },
+    "dpi": {},
+    "isDuplexEnabled": true,
+    "isDuplexShortEdge": false,
+    "isHeaderFooterEnabled": false,
+    "isLandscapeEnabled": false,
+    "marginsType": 3,
+    "mediaSize": {
+        "height_microns": 279400,
+        "is_default": true,
+        "name": "NA_LETTER",
+        "width_microns": 215900,
+        "custom_display_name": "Letter"
+    },
+    "customScaling": false,
+    "scaling": "100",
+    "isFitToPageEnabled": false,
+    "vendorOptions": {}
+}
