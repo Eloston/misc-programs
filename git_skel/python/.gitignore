@@ -1,0 +1,5 @@
+# Python and testing/linting excludes
+__pycache__/
+/.mypy_cache
+/.coverage
+*.py[cod]

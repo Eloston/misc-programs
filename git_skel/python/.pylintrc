@@ -1,0 +1,7 @@
+[MASTER]
+disable=locally-disabled
+extension-pkg-whitelist=PyQt5
+jobs=4
+persistent=n
+score=n
+lol=no
