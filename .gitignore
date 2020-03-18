@@ -1,2 +1,3 @@
 # Python intermediates
+*.py[cod]
 __pycache__/
