@@ -18,7 +18,6 @@ print('Using CardDAV URL:', CARDDAV_URL)
 WEBDAV_URL = os.environ.get('WEBDAV_URL')
 print('Using WebDAV URL:', WEBDAV_URL)
 
-
 async def homepage(request: Request):
     return PlainTextResponse('GNOME Online Accounts CalDAV/CardDAV Binder is running!')
 
@@ -38,7 +37,7 @@ async def dav(request: Request):
     return RedirectResponse(url)
 
 app = Starlette(
-    debug=True,
+    debug=False,
     routes=[
         Route("/", endpoint=homepage),
         Route("/.well-known/{type}", endpoint=dav, methods=["PROPFIND"]),

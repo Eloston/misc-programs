@@ -1,0 +1,9 @@
+[Unit]
+Description=GNOME Online Accounts CalDAV/CardDAV Binder
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/uvicorn --reload --host 127.0.0.1 --port 9264 goa_dav_binder:app
+
+[Install]
+WantedBy=default.target

@@ -2,9 +2,13 @@
 
 Add support for CalDAV/CardDAV in GNOME Online Accounts via a pseudo Nextcloud server.
 
-## Setup and run
+## Dependencies
 
 Written for Python 3.7 and newer. Requires uvicorn and starlette: `apt install uvicorn python3-starlette`
+
+## Normal setup
+
+To setup as a systemd service, see the next section.
 
 1. Set environment variables `CALDAV_URL` (Calendaring and Tasks), `CARDDAV_URL` (Contacts), and `WEBDAV_URL` (File access) to the endpoints to forward to. You may omit one or more URLs for services you do not want to enable.
 	* e.g. for FastMail, set the following:
@@ -17,8 +21,24 @@ Written for Python 3.7 and newer. Requires uvicorn and starlette: `apt install u
 2. Run the server:
 	* Run directly: `python3 goa_dav_binder.py`
 	* Run with automatic reloading on code changes: `uvicorn --reload --port=9264 goa_dav_binder:app`
-	* Run as systemd service: TODO
 3. Go to GNOME Online Accounts, and add a new Nextcloud account. Set the server to `http://localhost:9264`, and use your service's username and password.
+
+## Setup as systemd service
+
+1. Create file `~/.config/systemd/user/goa-dav-binder.service.d/binder-settings.conf` using the following template:
+
+	```ini
+	[Service]
+	WorkingDirectory=/path/to/goa-dav-binder
+	Environment="CALDAV_URL=..."
+	Environment="CARDDAV_URL=..."
+	Environment="WEBDAV_URL=..."
+	```
+
+2. `cp -i goa-dav-binder.service ~/.config/systemd/user/`
+3. `systemctl --user enable goa-dav-binder`
+4. `systemctl --user start goa-dav-binder`
+5. Go to GNOME Online Accounts, and add a new Nextcloud account. Set the server to `http://localhost:9264`, and use your service's username and password.
 
 ## Troubleshooting
 
