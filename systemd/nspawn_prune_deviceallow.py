@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-Collects and prunes systemd-nspawn runtime DeviceAllow= statements
+Prunes systemd-nspawn runtime DeviceAllow= statements after a device removal
 
-Updates the runtime properties via:
+It updates the runtime properties via:
 systemctl set-property --runtime systemd-nspawn@MACHINE.service ...
 """
 

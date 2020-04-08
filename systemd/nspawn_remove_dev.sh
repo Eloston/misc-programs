@@ -22,7 +22,7 @@ if ! systemctl is-active --quiet systemd-nspawn@$_machine.service; then
 fi
 
 # Remove unneeded DeviceAllow for our device
-$(dirname $(readlink -f $0))/nspawn_get_deviceallow.py $_machine $_device
+$(dirname $(readlink -f $0))/nspawn_prune_deviceallow.py $_machine $_device
 
 if systemd-run --wait --machine=$_machine /usr/bin/test -e $_device; then
 	systemd-mount --machine=$_machine --unmount $_device
