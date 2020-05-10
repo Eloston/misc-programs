@@ -26,8 +26,7 @@ wimexport "$ESD_PATH" 3 "$OUTPUT_PATH"/sources/boot.wim --compress=maximum --boo
 wiminfo "$OUTPUT_PATH"/sources/boot.wim
 
 # Create install.wim based upon "Windows 10 Enterprise" image
-# TODO: It is probably okay to use stronger compression like LZMS (i.e. "recovery") or even --solid for install.wim
-wimexport "$ESD_PATH" 6 "$OUTPUT_PATH"/sources/install.wim --compress=maximum
+wimexport "$ESD_PATH" 6 "$OUTPUT_PATH"/sources/install.wim --compress=LZMS
 
 # Display info from created boot.wim
 wiminfo "$OUTPUT_PATH"/sources/install.wim
