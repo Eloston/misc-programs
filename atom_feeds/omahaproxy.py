@@ -19,7 +19,8 @@ OS_ID_CONVERSION = {
     "win": "Windows",
     "win64": "Windows 64-bit",
     "linux": "Linux",
-    "mac": "Mac OSX",
+    "mac": "macOS",
+    "mac_arm64": "macOS ARM64",
     "cf": "Chrome Frame",
     "android": "Android",
     "webview": "Android WebView"
