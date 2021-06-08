@@ -6,6 +6,7 @@ import argparse
 import multiprocessing
 import numpy as np
 import os
+import sys
 
 import cv2
 """
@@ -110,6 +111,25 @@ def get_good_matches(des1, des2):
     return ngood
 
 
+# User interface common functions
+
+
+def status_msg(*args, **kwargs):
+    print(ANSI_CL, end='')
+    print(*args, end='\r', **kwargs)
+
+
+def error_msg(*args, **kwargs):
+    print(ANSI_CL, end='')
+    print(*args, file=sys.stderr, **kwargs)
+
+
+def info_msg(*args, clear=False, **kwargs):
+    if clear:
+        print(ANSI_CL, end='')
+    print(*args, **kwargs)
+
+
 # Process pool worker functions
 
 
@@ -124,26 +144,26 @@ def init_worker(img_path, max_length):
 def compute_ngood(img_path):
     assert _REFERENCE_DES is not None
     if not img_path.is_file():
-        print('\nSkipping non-file', img_path)
+        error_msg('Skipping non-file', img_path)
         return
     if img_path.is_symlink():
-        print('\nSkipping symlink', img_path)
+        error_msg('Skipping symlink', img_path)
         return
 
     try:
-        print(f'{ANSI_CL}Processing', img_path, end='\r')
+        status_msg('Processing', img_path)
         try:
             scan_des = compute_descriptor(img_path, _MAX_LENGTH)
         except _InvalidComputation as exc:
-            print(f'{ANSI_CL}Skipping img with compute_descriptor error "{str(exc)}":', img_path)
+            error_msg(f'Skipping img with compute_descriptor error "{str(exc)}":', img_path)
             return -1, img_path
         try:
             ngood = get_good_matches(_REFERENCE_DES, scan_des)
         except _InvalidComputation as exc:
-            print(f'{ANSI_CL}Skipping img with get_good_matches error "{str(exc)}":', img_path)
+            error_msg(f'Skipping img with get_good_matches error "{str(exc)}":', img_path)
             return -1, img_path
     except BaseException as exc:
-        print(f'{ANSI_CL}Threw exception on {img_path}: {exc}')
+        error_msg(f'Threw exception on {img_path}: {exc}')
         return -1, img_path
     return ngood, img_path
 
@@ -163,21 +183,27 @@ def main():
                         type=int,
                         default=2,
                         help='Chunksize for multiprocessing map operation. Default: %(default)s')
-    parser.add_argument('--resize', type=int, default=640, help='Before computing descriptors, specifies the maximum length of the larger dimension when downscaling images. Default: %(default)s')
-    parser.add_argument('query_img',
-                              type=Path,
-                              help='Path to the query image')
-    parser.add_argument('img_root', type=Path, help='Path to the directory containing images to search through')
+    parser.add_argument(
+        '--resize',
+        type=int,
+        default=640,
+        help=
+        'Before computing descriptors, specifies the maximum length of the larger dimension when downscaling images. Default: %(default)s'
+    )
+    parser.add_argument('query_img', type=Path, help='Path to the query image')
+    parser.add_argument('img_root',
+                        type=Path,
+                        help='Path to the directory containing images to search through')
     args = parser.parse_args()
 
-    print(f'{ANSI_CL}Initializing workers...', end='\r')
+    status_msg('Initializing workers...')
     with multiprocessing.Pool(args.workers, init_worker, [args.query_img, args.resize]) as pool:
         all_matches = list(
             pool.imap_unordered(compute_ngood, args.img_root.rglob('*'), chunksize=args.chunksize))
     all_matches.sort()
-    print(f'{ANSI_CL}Top {NTOP} matches:')
+    info_msg(f'Top {NTOP} matches:', clear=True)
     for ngood, scan_path in all_matches[-NTOP:]:
-        print(scan_path, f'({ngood})')
+        info_msg(scan_path, f'({ngood})')
 
 
 if __name__ == '__main__':
