@@ -156,15 +156,15 @@ def compute_ngood(img_path):
             scan_des = compute_descriptor(img_path, _MAX_LENGTH)
         except _InvalidComputation as exc:
             error_msg(f'Skipping img with compute_descriptor error "{str(exc)}":', img_path)
-            return -1, img_path
+            return
         try:
             ngood = get_good_matches(_REFERENCE_DES, scan_des)
         except _InvalidComputation as exc:
             error_msg(f'Skipping img with get_good_matches error "{str(exc)}":', img_path)
-            return -1, img_path
+            return
     except BaseException as exc:
         error_msg(f'Threw exception on {img_path}: {exc}')
-        return -1, img_path
+        return
     return ngood, img_path
 
 
@@ -198,8 +198,14 @@ def main():
 
     status_msg('Initializing workers...')
     with multiprocessing.Pool(args.workers, init_worker, [args.query_img, args.resize]) as pool:
+        # filter(None, ...) means we use the identity function (e.g. lambda x: x) to filter.
+        # Since compute_ngood only returns None (on error) or a tuple (on success), this will filter out all None
         all_matches = list(
-            pool.imap_unordered(compute_ngood, args.img_root.rglob('*'), chunksize=args.chunksize))
+            filter(
+                None,
+                pool.imap_unordered(compute_ngood,
+                                    args.img_root.rglob('*'),
+                                    chunksize=args.chunksize)))
     all_matches.sort()
     info_msg(f'Top {NTOP} matches:', clear=True)
     for ngood, scan_path in all_matches[-NTOP:]:
