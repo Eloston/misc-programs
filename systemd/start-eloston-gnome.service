@@ -1,0 +1,12 @@
+[Unit]
+Description=Start Eloston GNOME
+After=network.target start-eloston-gnome.socket
+Requires=start-eloston-gnome.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python /opt/start_eloston_gnome.py 192.168.24.3 8123
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

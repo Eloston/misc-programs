@@ -14,6 +14,8 @@ After=rc-local.service
 IgnoreOnIsolate=yes
 BindsTo=user@1000.service
 After=user@1000.service
+OnFailure=getty@%i.service
+OnSuccess=getty@%i.service
 
 # IgnoreOnIsolate causes issues with sulogin, if someone isolates
 # rescue.target or starts rescue.service from multi-user.target or
