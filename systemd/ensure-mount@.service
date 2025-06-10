@@ -1,0 +1,14 @@
+[Unit]
+Description=Ensures %i.mount is always mounted
+BindsTo=%i.mount
+After=%i.mount
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/sleep infinity
+RemainAfterExit=true
+Restart=always
+RestartMode=direct
+RestartSec=1
+RestartSteps=3
+RestartMaxDelaySec=10
