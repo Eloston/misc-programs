@@ -5,19 +5,19 @@ set -euo pipefail
 
 # Detect codename
 if [[ -r /etc/os-release ]]; then
-  . /etc/os-release
+  # shellcheck source=/dev/null
+  source /etc/os-release
   CODENAME="${VERSION_CODENAME}"
 else
   CODENAME="$(lsb_release -sc)"
 fi
 
-# Raw TSV lines for robust parsing: PACKAGE<TAB>CURRENT<TAB>BACKPORTS
-readarray -t TSV < <(
+readarray -t UPGRADABLE < <(
   aptitude search -t "${CODENAME}-backports" '?upgradable ?archive(backports)' \
-    -F '%p\t%v\t%V' | awk 'NF'
+    -F '%p|%v|%V' | awk 'NF'
 )
 
-if [[ ${#TSV[@]} -eq 0 ]]; then
+if [[ ${#UPGRADABLE[@]} -eq 0 ]]; then
   echo "No backports upgrades available."
   exit 0
 fi
@@ -27,8 +27,9 @@ TMPFILE="$(mktemp)"
   echo "# Edit the list of packages to upgrade from ${CODENAME}-backports."
   echo "# Delete lines to skip packages. Lines starting with '#' are ignored."
   echo "# Columns: PACKAGE | CURRENT | -> | BACKPORTS"
-  echo "# vim: set nowrap"
-  printf "%s\n" "${TSV[@]}" | awk -F'\t' '{printf "%s\t%s\t->\t%s\n",$1,$2,$3}' | column -t -s $'\t'
+  printf "%s\n" "${UPGRADABLE[@]}" \
+    | awk -F'|' '{printf "%s|%s|->|%s\n",$1,$2,$3}' \
+    | column -t -s '|'
 } > "$TMPFILE"
 
 "${EDITOR:-nvim}" "$TMPFILE"
