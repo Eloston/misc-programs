@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec sudo python3 $(dirname $(readlink -f $0))/apt_local_repo.py "$@"
