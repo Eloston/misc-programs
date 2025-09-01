@@ -1,5 +1,4 @@
 #!/bin/bash
-
 set -euo pipefail
 
 # Assumes: backports repo is enabled and apt lists are already up to date.
@@ -12,10 +11,10 @@ else
   CODENAME="$(lsb_release -sc)"
 fi
 
-# Gather (tab-separated): PACKAGE<TAB>CURRENT<TAB>-><TAB>BACKPORTS
+# Raw TSV lines for robust parsing: PACKAGE<TAB>CURRENT<TAB>BACKPORTS
 readarray -t TSV < <(
   aptitude search -t "${CODENAME}-backports" '?upgradable ?archive(backports)' \
-    -F '%p\t%v\t->\t%V' | awk 'NF'
+    -F '%p\t%v\t%V' | awk 'NF'
 )
 
 if [[ ${#TSV[@]} -eq 0 ]]; then
@@ -24,33 +23,18 @@ if [[ ${#TSV[@]} -eq 0 ]]; then
 fi
 
 TMPFILE="$(mktemp)"
-
-# Header with nvim modelines:
-# - nowrap: avoid wrapping long version strings.
-# - noexpandtab: keep tabs, so columns align visually.
-# - tabstop=24: tune visual width of tabs; adjust to taste.
-# - colorcolumn=, list, listchars to gently show tabs without clutter.
 {
   echo "# Edit the list of packages to upgrade from ${CODENAME}-backports."
   echo "# Delete lines to skip packages. Lines starting with '#' are ignored."
-  echo "# Columns (tab-separated): PACKAGE<TAB>CURRENT<TAB>-><TAB>BACKPORTS"
-  echo "# vim: set nowrap noexpandtab tabstop=24 list listchars=tab:\ \ ,trail:· colorcolumn=:"
-  printf "%s\t%s\t%s\t%s\n" "PACKAGE" "CURRENT" "->" "BACKPORTS"
-  printf "%s\n" "${TSV[@]}"
+  echo "# Columns: PACKAGE | CURRENT | -> | BACKPORTS"
+  echo "# vim: set nowrap"
+  printf "%s\n" "${TSV[@]}" | awk -F'\t' '{printf "%s\t%s\t->\t%s\n",$1,$2,$3}' | column -t -s $'\t'
 } > "$TMPFILE"
-
-# Comment the header row so it won't be selected
-sed -i 's/^PACKAGE/# PACKAGE/' "$TMPFILE"
 
 "${EDITOR:-nvim}" "$TMPFILE"
 
-# Read back selected package names (ignore comments/blank lines).
-# Because we kept hard tabs and first field is the package name,
-# we can safely split on tabs and take field 1.
-readarray -t SELECTED < <(
-  grep -v '^\s*#' "$TMPFILE" | awk -F'\t' 'NF {print $1}' | sort -u
-)
-
+# Parse package names (first token), ignore comments/blank lines
+readarray -t SELECTED < <(grep -v '^\s*#' "$TMPFILE" | awk 'NF {print $1}' | sort -u)
 rm -f "$TMPFILE"
 
 if [[ ${#SELECTED[@]} -eq 0 ]]; then
