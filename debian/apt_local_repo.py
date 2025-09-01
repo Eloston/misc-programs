@@ -6,37 +6,68 @@ import shutil
 import subprocess
 from collections.abc import Iterable, Set
 from pathlib import Path
+from typing import NamedTuple
+
+# Package python3-apt
+import apt_pkg
+
+def _ensure_apt_pkg_initialized() -> None:
+    if hasattr(apt_pkg, '_initialized') and apt_pkg._initialized:
+        return
+    apt_pkg.init()
+    apt_pkg._initialized = True
+
 
 _REPO_ROOT = Path('/var/local/cache/apt/repo')
 _PACKAGE_INDEX_NAME = 'Packages'
 _RELEASE_INDEX_NAME = 'Release'
 _TO_KEEP = (_PACKAGE_INDEX_NAME, _RELEASE_INDEX_NAME)
 
+class _Package(NamedTuple):
+    name: str
+    version: str
+    filename: Path
 
-def parse_package_index_filenames(path: Path) -> Iterable[str]:
+def _parse_package_index(root: Path) -> Iterable[_Package]:
+    pkg = ver = fn = None
+    with (root / _PACKAGE_INDEX_NAME).open('r', encoding='utf-8', errors='replace') as f:
+        for line in f:
+            line = line.rstrip('\n')
+            if not line:
+                # end of stanza
+                if pkg and ver and fn:
+                    yield _Package(pkg, ver, fn)
+                # reset for next stanza
+                pkg = ver = fn = None
+                continue
+
+            if line.startswith("Package:"):
+                pkg = line.split(":", 1)[1].strip()
+            elif line.startswith("Version:"):
+                ver = line.split(":", 1)[1].strip()
+            elif line.startswith("Filename:"):
+                fn = Path(line.split(":", 1)[1].strip())
+
+        # handle last stanza if file doesn't end with a blank line
+        if pkg and ver and fn:
+            yield _Package(pkg, ver, fn)
+
+
+
+def _parse_package_index_paths(root: Path) -> Iterable[Path]:
     return map(
-        lambda x: x[len('Filename: '):],
-        filter(
-            lambda x: x.startswith('Filename: '),
-            path.read_text().splitlines()
-        )
+        lambda x: root / x.filename,
+        _parse_package_index(root)
     )
 
 
-def parse_package_index_paths(root: Path) -> Iterable[Path]:
-    return map(
-        lambda x: root / x,
-        parse_package_index_filenames(root / _PACKAGE_INDEX_NAME)
-    )
-
-
-def add_packages(paths: Iterable[Path], root: Path, replace: bool = False) -> Set[Path]:
+def _add_packages(paths: Iterable[Path], root: Path, replace: bool = False) -> Set[Path]:
     added: set[Path] = set()
     for path in paths:
         resolved_path = path.resolve()
         assert resolved_path.exists()
         if resolved_path.is_dir():
-            added.update(add_packages(path.rglob('*.deb'), root, replace))
+            added.update(_add_packages(path.rglob('*.deb'), root, replace))
             continue
         if path.suffix != '.deb':
             continue
@@ -57,7 +88,7 @@ def add_packages(paths: Iterable[Path], root: Path, replace: bool = False) -> Se
     return added
 
 
-def generate_package_index(root: Path, multiversion=False) -> None:
+def _generate_package_index(root: Path, multiversion=False) -> None:
     # args = ['apt-ftparchive', 'packages', '.']
     args = ['dpkg-scanpackages', '-h', 'sha256']
     if multiversion:
@@ -68,7 +99,7 @@ def generate_package_index(root: Path, multiversion=False) -> None:
     (root / _PACKAGE_INDEX_NAME).write_text(result.stdout)
 
 
-def generate_release_index(root: Path) -> None:
+def _generate_release_index(root: Path) -> None:
     args = [
         'apt-ftparchive',
         '-o', 'APT::FTPArchive::Release::Origin=apt-local-repo',
@@ -80,11 +111,37 @@ def generate_release_index(root: Path) -> None:
                             text=True, check=True, cwd=str(root))
     (root / _RELEASE_INDEX_NAME).write_text(result.stdout)
 
+def _remove_obsolete_packages(root: Path) -> Set[Path]:
+    _ensure_apt_pkg_initialized()
+    cache = apt_pkg.Cache()
 
-def prune_repo(root: Path) -> Set[Path]:
-    to_keep: set[Path] = set(parse_package_index_paths(root))
+    def cmp(a, b):
+        vc = apt_pkg.version_compare(a, b)
+        return (vc > 0) - (vc < 0)
+
+    obsolete_filenames: Set[Path] = set()
+
+    packages_index = _parse_package_index(root)
+    for stanza in packages_index:
+        pkg = stanza.name
+        ver = stanza.version
+        fn = stanza.filename
+        cache_latest = None
+        if pkg in cache and cache[pkg].version_list:
+            cache_latest = cache[pkg].version_list[0].ver_str
+            if cmp(ver, cache_latest) < 0:
+                try:
+                    (root / fn).unlink()
+                    obsolete_filenames.add(fn)
+                except FileNotFoundError:
+                    print(f'Warning: {fn} listed in {_PACKAGE_INDEX_NAME} but not found')
+
+    return obsolete_filenames
+
+def _remove_unreferenced_filenames(root: Path) -> Set[Path]:
+    to_keep: set[Path] = set(_parse_package_index_paths(root))
     to_keep.update(root / x for x in _TO_KEEP)
-    pruned = set()
+    pruned: Set[Path] = set()
     path_stack = [root]
     while path_stack:
         path_parent = path_stack.pop()
@@ -106,23 +163,27 @@ def check_common_args(args: argparse.Namespace) -> None:
 
 
 def add_handler(args: argparse.Namespace) -> None:
-    added = add_packages(args.paths, args.root, args.replace)
-    generate_package_index(args.root)
-    generate_release_index(args.root)
-    pruned = prune_repo(args.root)
-    added_count = len(added - pruned)
-    pruned_count = len(pruned - added)
-    print('Added', added_count, 'and pruned', pruned_count, 'file(s)')
+    added = _add_packages(args.paths, args.root, args.replace)
+    _generate_package_index(args.root)
+    _generate_release_index(args.root)
+    unreferenced = _remove_unreferenced_filenames(args.root)
+    added_count = len(added - unreferenced)
+    unreferenced_count = len(unreferenced - added)
+    print(f'Added {added_count} and removed {unreferenced_count} file(s)')
 
 
 def prune_handler(args: argparse.Namespace) -> None:
-    pruned = prune_repo(args.root)
-    print('Pruned', len(pruned), 'file(s)')
+    unreferenced =_remove_unreferenced_filenames(args.root)
+    obsolete = _remove_obsolete_packages(args.root)
+    if obsolete:
+        _generate_package_index(args.root)
+        _generate_release_index(args.root)
+    print(f'Removed {len(unreferenced)} unreferenced and {len(obsolete)} obsolete file(s)')
 
 
 def scan_handler(args: argparse.Namespace) -> None:
-    generate_package_index(args.root)
-    generate_release_index(args.root)
+    _generate_package_index(args.root)
+    _generate_release_index(args.root)
 
 
 def main():
