@@ -1,10 +1,9 @@
 [Unit]
 Description=Start Eloston GNOME Socket
 PartOf=start-eloston-gnome.service
-After=network-online.target
 
 [Socket]
-ListenStream=192.168.24.3:8123
+ListenStream=0.0.0.0:8123
 
 [Install]
-WantedBy=network-online.target
+WantedBy=sockets.target
