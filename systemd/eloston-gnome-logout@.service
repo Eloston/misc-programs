@@ -1,0 +1,8 @@
+[Unit]
+Description=Logout GNOME session for user eloston on %I
+
+[Service]
+Type=oneshot
+User=eloston
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+ExecStart=/usr/bin/gnome-session-quit --logout
