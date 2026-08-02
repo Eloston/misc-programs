@@ -1,6 +1,7 @@
 [Unit]
 Description=Temporary Flatpak overrides for %I
 Ater=tmp.mount
+StopWhenUnneeded=true
 
 [Service]
 Type=oneshot
@@ -9,3 +10,4 @@ User=eloston
 Group=eloston
 ExecStartPre=/usr/bin/mkdir -p /tmp/.flatpak-overrides
 ExecStart=/usr/bin/cp /home/eloston/.local/share/flatpak/overrides/%I /tmp/.flatpak-overrides
+ExecStop=-/usr/bin/rm /tmp/.flatpak-overrides/%I

@@ -19,7 +19,7 @@ fi
 # Doesn't work with bind mount
 #flatpak --user override "--filesystem=$(readlink -f $1)" $_flatpak_id
 
-python3 - "$1" <<EOF
+python3 - "${@:2}" <<EOF
 #!/usr/bin/env python3
 
 from pathlib import Path
@@ -28,19 +28,21 @@ import sys
 path = Path('${_flatpak_overrides}')
 edit_notice = '# Edited automatically by my code-flatpak script'
 
+to_insert = set()
+for arg in sys.argv[1:]:
+    arg = Path(arg)
+    if not arg.exists():
+        print('ERROR: Path does not exist:', arg, file=sys.stderr)
+        sys.exit(1)
+    to_insert.add(str(arg.absolute()))
+
 content = path.read_text().splitlines()
 for i in range(len(content)):
     if not content[i].startswith('filesystems='):
         continue
     filesystems = content[i][len('filesystems='):].split(';')
-    to_insert = Path(sys.argv[1])
-    if not to_insert.exists():
-        print('ERROR: Path does not exist', file=sys.stderr)
-        sys.exit(1)
-    to_insert = str(Path(sys.argv[1]).absolute())
-    if to_insert in filesystems:
-        break
-    filesystems.insert(2, to_insert)
+    existing = set(filesystems)
+    filesystems = list(to_insert - existing) + filesystems
     content[i] = 'filesystems=' + ';'.join(filesystems)
 if content[0] != edit_notice:
     content.insert(0, edit_notice)

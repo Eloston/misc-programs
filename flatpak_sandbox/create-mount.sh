@@ -19,7 +19,7 @@ Conflicts=umount.target
 Before=umount.target
 # Ensure after tmpfs is ready on /tmp
 After=tmp.mount tmp-flatpak-overrides@$_flatpak_id.service
-Requires=tmp-flatpak-overrides@$_flatpak_id.service
+BindsTo=tmp-flatpak-overrides@$_flatpak_id.service
 
 [Mount]
 What=$_flatpak_override_src
