@@ -1,6 +1,6 @@
 [Unit]
 Description=Temporary Flatpak overrides for %I
-Ater=tmp.mount
+After=tmp.mount
 StopWhenUnneeded=true
 
 [Service]

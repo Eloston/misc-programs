@@ -3,6 +3,7 @@
 set -eu -o pipefail
 
 _flatpak_id=$1
+_ROOT_DIR=$(dirname $(readlink -f $0))
 _flatpak_overrides="/tmp/.flatpak-overrides/$_flatpak_id"
 
 if [ ! -f "$_flatpak_overrides" ]; then
@@ -11,7 +12,7 @@ if [ ! -f "$_flatpak_overrides" ]; then
 fi
 
 # If no path specified
-if [ -z "${1+x}" ]; then
+if [ -z "${2+x}" ]; then
 	flatpak --user run $_flatpak_id
 	exit 0
 fi
@@ -48,5 +49,8 @@ if content[0] != edit_notice:
     content.insert(0, edit_notice)
 path.write_text('\n'.join(content))
 EOF
+
+# Overrides apply only at launch, so also mount the paths into running instances
+"$_ROOT_DIR/inject-mounts.py" "$_flatpak_id" "${@:2}"
 
 flatpak --user run $_flatpak_id "${@:2}"
